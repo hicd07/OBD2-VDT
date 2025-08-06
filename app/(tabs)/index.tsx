@@ -120,6 +120,11 @@ export default function ScannerTab() {
         </Text>
       </View>
 
+      <ScrollView 
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
       <View style={styles.settingsBar}>
         <View style={styles.settingItem}>
           <TestTube size={16} color="#6b7280" strokeWidth={2} />
@@ -143,7 +148,6 @@ export default function ScannerTab() {
           />
         </View>
       </View>
-      <View style={styles.content}>
         <BluetoothConnection
           onDeviceConnected={setConnectedDevice}
           connectedDevice={connectedDevice}
@@ -168,7 +172,7 @@ export default function ScannerTab() {
             aiMode={settings.aiMode}
           />
         )}
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -218,5 +222,8 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 20,
   },
 });
