@@ -321,6 +321,23 @@ REM Step 9: Build the APK
 call :LOGINFO ""
 call :LOGINFO "[9/9] Building Android APK..."
 call :LOGINFO "This may take 5-15 minutes on first build (downloading dependencies)..."
+
+REM Verify we're in the android directory and gradlew.bat exists
+if not exist "gradlew.bat" (
+    call :LOGERROR "gradlew.bat not found in android directory"
+    call :LOGERROR "Current directory: %CD%"
+    call :LOGERROR "Directory contents:"
+    dir >>"%LOGFILE%" 2>&1
+    call :LOGERROR ""
+    call :LOGERROR "This indicates the prebuild step failed to create the Gradle wrapper."
+    call :LOGERROR "SOLUTION: Try running these commands manually:"
+    call :LOGERROR "1. cd .. (go back to project root)"
+    call :LOGERROR "2. npx expo prebuild --platform android --clean"
+    call :LOGERROR "3. Check if android/gradlew.bat is created"
+    goto :ERROR_EXIT
+)
+
+call :LOGINFO "✓ Found gradlew.bat, proceeding with build..."
 call :LOGINFO "Building debug APK (unsigned, suitable for testing)..."
 
 REM Build debug APK with detailed logging
@@ -328,6 +345,7 @@ set GRADLE_OPTS=-Xmx4g -XX:MaxMetaspaceSize=512m
 call :LOGINFO "Starting Gradle build with verbose output..."
 call :LOGINFO "Running: gradlew.bat assembleDebug --info --warning-mode all --no-daemon --stacktrace"
 
+call :LOGINFO "Executing Gradle build command now..."
 call gradlew.bat assembleDebug --info --warning-mode all --no-daemon --stacktrace >>"%LOGFILE%" 2>&1
 set BUILD_RESULT=%errorlevel%
 
@@ -360,6 +378,15 @@ if %BUILD_RESULT% neq 0 (
 REM Success! Check if APK was created
 call :LOGINFO "Checking for APK files in build output directories..."
 
+REM First, verify the android directory structure exists
+if not exist "app" (
+    call :LOGERROR "app directory not found in android project"
+    call :LOGERROR "This indicates the prebuild or build process failed"
+    call :LOGERROR "Android directory contents:"
+    dir >>"%LOGFILE%" 2>&1
+    goto :ERROR_EXIT
+)
+
 REM Check multiple possible APK locations
 set APK_PATH=
 if exist "app\build\outputs\apk\debug\app-debug.apk" (
@@ -372,7 +399,8 @@ if exist "app\build\outputs\apk\debug\app-debug.apk" (
     set APK_PATH=build\outputs\apk\debug\app-debug.apk
     call :LOGINFO "Found APK at: build\outputs\apk\debug\app-debug.apk"
 ) else (
-    call :LOGINFO "APK not found in standard locations, searching..."
+    call :LOGINFO "APK not found in standard locations, searching entire android directory..."
+    call :LOGINFO "Searching for *.apk files..."
     for /r . %%f in (*.apk) do (
         if exist "%%f" (
             set APK_PATH=%%f
@@ -380,6 +408,8 @@ if exist "app\build\outputs\apk\debug\app-debug.apk" (
             goto :APK_FOUND
         )
     )
+    call :LOGINFO "No APK files found anywhere in android directory"
+    call :LOGINFO "This suggests the Gradle build actually failed despite exit code 0"
 )
 
 :APK_FOUND
@@ -415,15 +445,23 @@ if exist "%APK_PATH%" (
     call :LOGINFO "Build completed at: %date% %time%"
     call :LOGINFO ""
 ) else (
-    call :LOGWARN "Build reported success but APK file not found"
-    call :LOGWARN "Searched locations:"
-    call :LOGWARN "  - app\build\outputs\apk\debug\app-debug.apk"
-    call :LOGWARN "  - app\build\outputs\apk\app-debug.apk"
-    call :LOGWARN "  - build\outputs\apk\debug\app-debug.apk"
-    call :LOGWARN "Please check the android directory manually for APK files"
+    call :LOGERROR "Build reported success but APK file not found"
+    call :LOGERROR "This indicates the Gradle build actually failed"
+    call :LOGERROR ""
+    call :LOGERROR "Searched locations:"
+    call :LOGERROR "  - app\build\outputs\apk\debug\app-debug.apk"
+    call :LOGERROR "  - app\build\outputs\apk\app-debug.apk"
+    call :LOGERROR "  - build\outputs\apk\debug\app-debug.apk"
+    call :LOGERROR ""
+    call :LOGERROR "Android directory structure:"
+    dir /s >>"%LOGFILE%" 2>&1
+    call :LOGERROR "Check the log file for full directory listing: %LOGFILE%"
+    call :LOGERROR ""
+    call :LOGERROR "RECOMMENDED SOLUTION:"
+    call :LOGERROR "Use EAS Build instead for reliable cloud-based building:"
+    call :LOGERROR "  npx eas build --platform android --profile preview"
     
-    call :LOGINFO "Listing android directory contents for debugging:"
-    dir /s *.apk >>"%LOGFILE%" 2>&1
+    goto :ERROR_EXIT
 )
 
 cd ..
