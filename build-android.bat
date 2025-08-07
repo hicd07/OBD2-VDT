@@ -24,7 +24,7 @@ call :LOGINFO "========================================="
 
 REM Check prerequisites
 call :LOGINFO ""
-call :LOGINFO "[0/8] Checking prerequisites..."
+call :LOGINFO "[0/9] Checking prerequisites..."
 
 REM Check Node.js
 node --version >nul 2>&1
@@ -68,7 +68,7 @@ call :LOGINFO "✓ Prerequisites check completed"
 
 REM Step 1: Install Node.js dependencies
 call :LOGINFO ""
-call :LOGINFO "[1/8] Installing Node.js dependencies..."
+call :LOGINFO "[1/9] Installing Node.js dependencies..."
 call :LOGINFO "Running: npm install"
 
 npm install >>"%LOGFILE%" 2>&1
@@ -82,12 +82,25 @@ if %errorlevel% neq 0 (
 )
 call :LOGINFO "✓ Dependencies installed successfully"
 
-REM Step 2: Clean any existing android directory to avoid conflicts
+REM Step 2: Clean Expo cache and prebuilds
 call :LOGINFO ""
-call :LOGINFO "[2/8] Cleaning existing Android project..."
+call :LOGINFO "[2/9] Cleaning Expo cache and prebuilds..."
+call :LOGINFO "Running: npx expo clean"
+
+npx expo clean >>"%LOGFILE%" 2>&1
+if %errorlevel% neq 0 (
+    call :LOGWARN "expo clean failed, continuing anyway..."
+    call :LOGWARN "This may cause issues with cached files"
+) else (
+    call :LOGINFO "✓ Expo cache cleaned successfully"
+)
+
+REM Step 3: Clean any existing android directory to avoid conflicts
+call :LOGINFO ""
+call :LOGINFO "[3/9] Cleaning existing Android project..."
 if exist "android" (
     call :LOGINFO "Removing existing android directory..."
-    rmdir /s /q android
+    rmdir /s /q android >>"%LOGFILE%" 2>&1
     if exist "android" (
         call :LOGERROR "Failed to remove android directory. It may be in use."
         call :LOGERROR "Please close Android Studio and any file explorers, then try again."
@@ -98,9 +111,9 @@ if exist "android" (
     call :LOGINFO "✓ No existing Android project to clean"
 )
 
-REM Step 3: Generate native Android project files (prebuild)
+REM Step 4: Generate native Android project files (prebuild)
 call :LOGINFO ""
-call :LOGINFO "[3/8] Generating native Android project files..."
+call :LOGINFO "[4/9] Generating native Android project files..."
 call :LOGINFO "Running: npx expo prebuild --platform android --no-install --clean"
 
 npx expo prebuild --platform android --no-install --clean >>"%LOGFILE%" 2>&1
@@ -109,14 +122,14 @@ if %errorlevel% neq 0 (
     call :LOGERROR "Common solutions:"
     call :LOGERROR "  - Ensure you have the latest Expo CLI: npm install -g @expo/cli"
     call :LOGERROR "  - Check your app.json/app.config.js configuration"
-    call :LOGERROR "  - Try: expo install --fix"
+    call :LOGERROR "  - Try: npx expo install --fix"
     goto :ERROR_EXIT
 )
 call :LOGINFO "✓ Native Android project generated"
 
-REM Step 4: Configure Android SDK location
+REM Step 5: Configure Android SDK location
 call :LOGINFO ""
-call :LOGINFO "[4/8] Configuring Android SDK location..."
+call :LOGINFO "[5/9] Configuring Android SDK location..."
 
 REM Check if ANDROID_HOME is set
 if defined ANDROID_HOME (
@@ -174,7 +187,7 @@ if not exist "%SDK_PATH%\build-tools" (
 
 REM Create local.properties file with SDK path
 call :LOGINFO "Creating android/local.properties..."
-echo sdk.dir=%SDK_PATH:\=\\% > android\local.properties
+echo sdk.dir=%SDK_PATH:\=\\% > android\local.properties >>"%LOGFILE%" 2>&1
 if exist "android\local.properties" (
     call :LOGINFO "✓ Android SDK configured successfully"
     call :LOGINFO "SDK Path: %SDK_PATH%"
@@ -183,9 +196,9 @@ if exist "android\local.properties" (
     goto :ERROR_EXIT
 )
 
-REM Step 5: Check and fix Gradle compatibility issues
+REM Step 6: Check and fix Gradle compatibility issues
 call :LOGINFO ""
-call :LOGINFO "[5/8] Checking and fixing Gradle compatibility issues..."
+call :LOGINFO "[6/9] Checking and fixing Gradle compatibility issues..."
 
 cd android
 
@@ -216,9 +229,9 @@ if %errorlevel% neq 0 (
 
 call :LOGINFO "✓ Gradle compatibility fixes applied"
 
-REM Step 6: Check Gradle daemon and system info
+REM Step 7: Check Gradle daemon and system info
 call :LOGINFO ""
-call :LOGINFO "[6/8] Checking Gradle daemon and system info..."
+call :LOGINFO "[7/9] Checking Gradle daemon and system info..."
 
 call :LOGINFO "Stopping any existing Gradle daemons..."
 call gradlew --stop >>"%LOGFILE%" 2>&1
@@ -228,9 +241,9 @@ call gradlew --version >>"%LOGFILE%" 2>&1
 
 call :LOGINFO "✓ Gradle system check completed"
 
-REM Step 7: Validate build configuration
+REM Step 8: Validate build configuration
 call :LOGINFO ""
-call :LOGINFO "[7/8] Validating build configuration..."
+call :LOGINFO "[8/9] Validating build configuration..."
 
 if exist "app\build.gradle" (
     call :LOGINFO "✓ Found app build.gradle"
@@ -258,9 +271,9 @@ if exist "build.gradle" (
 
 call :LOGINFO "✓ Build configuration validation completed"
 
-REM Step 8: Build the APK
+REM Step 9: Build the APK
 call :LOGINFO ""
-call :LOGINFO "[8/8] Building Android APK..."
+call :LOGINFO "[9/9] Building Android APK..."
 call :LOGINFO "This may take 5-15 minutes on first build (downloading dependencies)..."
 call :LOGINFO "Building debug APK (unsigned, suitable for testing)..."
 
