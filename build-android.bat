@@ -287,106 +287,11 @@ call gradlew.bat --version >>"%LOGFILE%" 2>&1
 
 call :LOGINFO "✓ Gradle system check completed"
 
-REM Step 8: Validate build configuration
-call :LOGINFO ""
-call :LOGINFO "[8/9] Validating build configuration..."
-
-if exist "app\build.gradle" (
-    call :LOGINFO "✓ Found app build.gradle"
-    
-    REM Check for common issues
-    findstr /c:"compileSdkVersion" app\build.gradle >nul
-    if %errorlevel% neq 0 (
-        call :LOGWARN "compileSdkVersion not found in build.gradle - this may cause issues"
-    )
-    
-    findstr /c:"buildToolsVersion" app\build.gradle >nul
-    if %errorlevel% neq 0 (
-        call :LOGWARN "buildToolsVersion not found in build.gradle - this may cause issues"
-    )
-) else (
-    call :LOGERROR "app/build.gradle not found - this is required for building"
-    goto :ERROR_EXIT
-)
-
-if exist "build.gradle" (
-    call :LOGINFO "✓ Found root build.gradle"
-) else (
-    call :LOGWARN "Root build.gradle not found"
-)
-
-call :LOGINFO "✓ Build configuration validation completed"
-
-REM Step 9: Build the APK
-call :LOGINFO ""
-call :LOGINFO "[9/9] Building Android APK..."
-call :LOGINFO "This may take 5-15 minutes on first build (downloading dependencies)..."
-
-REM Verify we're in the android directory and gradlew.bat exists
-if not exist "gradlew.bat" (
-    call :LOGERROR "gradlew.bat not found in android directory"
-    call :LOGERROR "Current directory: %CD%"
-    call :LOGERROR "Directory contents:"
-    dir >>"%LOGFILE%" 2>&1
-    call :LOGERROR ""
-    call :LOGERROR "This indicates the prebuild step failed to create the Gradle wrapper."
-    call :LOGERROR "SOLUTION: Try running these commands manually:"
-    call :LOGERROR "1. cd .. (go back to project root)"
-    call :LOGERROR "2. npx expo prebuild --platform android --clean"
-    call :LOGERROR "3. Check if android/gradlew.bat is created"
-    goto :ERROR_EXIT
-)
-
-call :LOGINFO "✓ Found gradlew.bat, proceeding with build..."
-call :LOGINFO "Building debug APK (unsigned, suitable for testing)..."
-
-REM Build debug APK with detailed logging
-set GRADLE_OPTS=-Xmx4g -XX:MaxMetaspaceSize=512m
-call :LOGINFO "Starting Gradle build with verbose output..."
-call :LOGINFO "Running: gradlew.bat assembleDebug --info --warning-mode all --no-daemon --stacktrace"
-
-call :LOGINFO "Executing Gradle build command now..."
-call gradlew.bat assembleDebug --info --warning-mode all --no-daemon --stacktrace >>"%LOGFILE%" 2>&1
-set BUILD_RESULT=%errorlevel%
-
-call :LOGINFO "Gradle build completed with exit code: %BUILD_RESULT%"
-
-if %BUILD_RESULT% neq 0 (
-    call :LOGERROR ""
-    call :LOGERROR "========================================="
-    call :LOGERROR "GRADLE BUILD FAILED"
-    call :LOGERROR "========================================="
-    call :LOGERROR ""
-    call :LOGERROR "Build failed with exit code: %BUILD_RESULT%"
-    call :LOGERROR "Full build log saved to: %LOGFILE%"
-    call :LOGERROR ""
-    call :LOGERROR "TROUBLESHOOTING STEPS:"
-    call :LOGERROR "1. Check the detailed log file above for specific errors"
-    call :LOGERROR "2. Ensure you have JDK 17 or higher installed"
-    call :LOGERROR "3. Verify Android SDK is properly installed with required API levels"
-    call :LOGERROR "4. Try manual commands:"
-    call :LOGERROR "   cd android"
-    call :LOGERROR "   gradlew.bat clean"
-    call :LOGERROR "   gradlew.bat assembleDebug --stacktrace"
-    call :LOGERROR "5. Check available memory (Gradle needs 2-4GB RAM)"
-    call :LOGERROR "6. Consider using EAS Build for cloud-based building:"
-    call :LOGERROR "   npx eas build --platform android"
-    call :LOGERROR ""
-    goto :ERROR_EXIT
-)
-
-REM Success! Check if APK was created
-call :LOGINFO "Checking for APK files in build output directories..."
-
-REM First, verify the android directory structure exists
-if not exist "app" (
-    call :LOGERROR "app directory not found in android project"
-    call :LOGERROR "This indicates the prebuild or build process failed"
     call :LOGERROR "Android directory contents:"
     dir >>"%LOGFILE%" 2>&1
     goto :ERROR_EXIT
 )
-
+call :LOGINFO "Running: gradlew.bat assembleDebug --info --warning-mode all --no-daemon --stacktrace"
 REM Check multiple possible APK locations
 set APK_PATH=
 if exist "app\build\outputs\apk\debug\app-debug.apk" (
