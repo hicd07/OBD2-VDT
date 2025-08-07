@@ -1,6 +1,24 @@
 @echo off
 setlocal enabledelayedexpansion
 
+REM Change to the directory where this batch file is located
+cd /d "%~dp0"
+
+REM Verify we're in the correct project directory
+if not exist "package.json" (
+    echo [ERROR] package.json not found. This script must be run from the project root directory.
+    echo Current directory: %CD%
+    pause
+    exit /b 1
+)
+
+if not exist "app.json" (
+    echo [ERROR] app.json not found. This doesn't appear to be an Expo project.
+    echo Current directory: %CD%
+    pause
+    exit /b 1
+)
+
 REM Set console properties for better visibility
 title Building Android APK for OBD2-VDT Project
 color 0A
@@ -20,6 +38,7 @@ call :LOGINFO "========================================="
 call :LOGINFO "Building Android APK for OBD2-VDT Project"
 call :LOGINFO "Build started at: %date% %time%"
 call :LOGINFO "Log file: %LOGFILE%"
+call :LOGINFO "Project directory: %CD%"
 call :LOGINFO "========================================="
 
 REM Check prerequisites
@@ -48,6 +67,7 @@ if %errorlevel% neq 0 (
 REM Check if this is an Expo project
 if not exist "package.json" (
     call :LOGERROR "package.json not found. Are you in the correct directory?"
+    call :LOGERROR "Current directory: %CD%"
     goto :ERROR_EXIT
 )
 
@@ -199,8 +219,14 @@ if exist "android\local.properties" (
 REM Step 6: Check and fix Gradle compatibility issues
 call :LOGINFO ""
 call :LOGINFO "[6/9] Checking and fixing Gradle compatibility issues..."
+call :LOGINFO "Changing to android directory: %CD%\android"
 
 cd android
+if %errorlevel% neq 0 (
+    call :LOGERROR "Failed to change to android directory"
+    call :LOGERROR "Current directory: %CD%"
+    goto :ERROR_EXIT
+)
 
 REM Check current Gradle version
 if exist "gradle\wrapper\gradle-wrapper.properties" (
