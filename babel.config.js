@@ -9,6 +9,7 @@ module.exports = function (api) {
           root: ['./'],
           alias: {
             '@': './',
+            'react-native': 'react-native-web',
           },
         },
       ],
