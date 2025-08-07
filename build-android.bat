@@ -306,9 +306,12 @@ call :LOGINFO "Building debug APK (unsigned, suitable for testing)..."
 REM Build debug APK with detailed logging
 set GRADLE_OPTS=-Xmx4g -XX:MaxMetaspaceSize=512m
 call :LOGINFO "Starting Gradle build with verbose output..."
+call :LOGINFO "Running: gradlew assembleDebug --info --warning-mode all --no-daemon --stacktrace"
 
 call gradlew assembleDebug --info --warning-mode all --no-daemon --stacktrace >>"%LOGFILE%" 2>&1
 set BUILD_RESULT=%errorlevel%
+
+call :LOGINFO "Gradle build completed with exit code: %BUILD_RESULT%"
 
 if %BUILD_RESULT% neq 0 (
     call :LOGERROR ""
@@ -335,7 +338,31 @@ if %BUILD_RESULT% neq 0 (
 )
 
 REM Success! Check if APK was created
-set APK_PATH=app\build\outputs\apk\debug\app-debug.apk
+call :LOGINFO "Checking for APK files in build output directories..."
+
+REM Check multiple possible APK locations
+set APK_PATH=
+if exist "app\build\outputs\apk\debug\app-debug.apk" (
+    set APK_PATH=app\build\outputs\apk\debug\app-debug.apk
+    call :LOGINFO "Found APK at: app\build\outputs\apk\debug\app-debug.apk"
+) else if exist "app\build\outputs\apk\app-debug.apk" (
+    set APK_PATH=app\build\outputs\apk\app-debug.apk
+    call :LOGINFO "Found APK at: app\build\outputs\apk\app-debug.apk"
+) else if exist "build\outputs\apk\debug\app-debug.apk" (
+    set APK_PATH=build\outputs\apk\debug\app-debug.apk
+    call :LOGINFO "Found APK at: build\outputs\apk\debug\app-debug.apk"
+) else (
+    call :LOGINFO "APK not found in standard locations, searching..."
+    for /r . %%f in (*.apk) do (
+        if exist "%%f" (
+            set APK_PATH=%%f
+            call :LOGINFO "Found APK at: %%f"
+            goto :APK_FOUND
+        )
+    )
+)
+
+:APK_FOUND
 if exist "%APK_PATH%" (
     call :LOGINFO ""
     call :LOGINFO "========================================="
@@ -368,9 +395,15 @@ if exist "%APK_PATH%" (
     call :LOGINFO "Build completed at: %date% %time%"
     call :LOGINFO ""
 ) else (
-    call :LOGWARN "Build reported success but APK file not found at expected location"
-    call :LOGWARN "Expected: android\%APK_PATH%"
-    call :LOGWARN "Please check the build output directory manually"
+    call :LOGWARN "Build reported success but APK file not found"
+    call :LOGWARN "Searched locations:"
+    call :LOGWARN "  - app\build\outputs\apk\debug\app-debug.apk"
+    call :LOGWARN "  - app\build\outputs\apk\app-debug.apk"
+    call :LOGWARN "  - build\outputs\apk\debug\app-debug.apk"
+    call :LOGWARN "Please check the android directory manually for APK files"
+    
+    call :LOGINFO "Listing android directory contents for debugging:"
+    dir /s *.apk >>"%LOGFILE%" 2>&1
 )
 
 cd ..
