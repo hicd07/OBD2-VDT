@@ -228,15 +228,35 @@ if %errorlevel% neq 0 (
     goto :ERROR_EXIT
 )
 
+REM Verify Gradle wrapper exists
+if not exist "gradlew.bat" (
+    call :LOGERROR "gradlew.bat not found in android directory"
+    call :LOGERROR "This indicates the prebuild step may have failed"
+    call :LOGERROR "Current android directory contents:"
+    dir >>"%LOGFILE%" 2>&1
+    call :LOGERROR ""
+    call :LOGERROR "SOLUTION: The prebuild step likely failed. Try:"
+    call :LOGERROR "1. Go back to project root: cd .."
+    call :LOGERROR "2. Run: npx expo prebuild --platform android --clean"
+    call :LOGERROR "3. Check if android/gradlew.bat is created"
+    call :LOGERROR "4. If still failing, try: npx expo run:android"
+    cd ..
+    goto :ERROR_EXIT
+) else (
+    call :LOGINFO "✓ Found gradlew.bat in android directory"
+)
+
 REM Check current Gradle version
 if exist "gradle\wrapper\gradle-wrapper.properties" (
     call :LOGINFO "Current Gradle wrapper configuration:"
-    type "gradle\wrapper\gradle-wrapper.properties" | findstr "distributionUrl" >>"%LOGFILE%" 2>&1
+    type "gradle\wrapper\gradle-wrapper.properties" >>"%LOGFILE%" 2>&1
+) else (
+    call :LOGWARN "gradle-wrapper.properties not found"
 )
 
 REM Update gradle wrapper to use a stable version
 call :LOGINFO "Updating Gradle wrapper to version 8.0.2 (compatible with JDK 17+)..."
-call gradlew wrapper --gradle-version 8.0.2 --distribution-type bin >>"%LOGFILE%" 2>&1
+call gradlew.bat wrapper --gradle-version 8.0.2 --distribution-type bin >>"%LOGFILE%" 2>&1
 if %errorlevel% neq 0 (
     call :LOGWARN "Failed to update Gradle wrapper, continuing with existing version..."
     call :LOGWARN "You may need to update manually if build fails"
@@ -246,7 +266,7 @@ if %errorlevel% neq 0 (
 
 REM Clean any cached build files
 call :LOGINFO "Cleaning Gradle build cache..."
-call gradlew clean >>"%LOGFILE%" 2>&1
+call gradlew.bat clean >>"%LOGFILE%" 2>&1
 if %errorlevel% neq 0 (
     call :LOGWARN "Gradle clean failed, continuing anyway..."
 ) else (
@@ -260,10 +280,10 @@ call :LOGINFO ""
 call :LOGINFO "[7/9] Checking Gradle daemon and system info..."
 
 call :LOGINFO "Stopping any existing Gradle daemons..."
-call gradlew --stop >>"%LOGFILE%" 2>&1
+call gradlew.bat --stop >>"%LOGFILE%" 2>&1
 
 call :LOGINFO "System information:"
-call gradlew --version >>"%LOGFILE%" 2>&1
+call gradlew.bat --version >>"%LOGFILE%" 2>&1
 
 call :LOGINFO "✓ Gradle system check completed"
 
@@ -306,9 +326,9 @@ call :LOGINFO "Building debug APK (unsigned, suitable for testing)..."
 REM Build debug APK with detailed logging
 set GRADLE_OPTS=-Xmx4g -XX:MaxMetaspaceSize=512m
 call :LOGINFO "Starting Gradle build with verbose output..."
-call :LOGINFO "Running: gradlew assembleDebug --info --warning-mode all --no-daemon --stacktrace"
+call :LOGINFO "Running: gradlew.bat assembleDebug --info --warning-mode all --no-daemon --stacktrace"
 
-call gradlew assembleDebug --info --warning-mode all --no-daemon --stacktrace >>"%LOGFILE%" 2>&1
+call gradlew.bat assembleDebug --info --warning-mode all --no-daemon --stacktrace >>"%LOGFILE%" 2>&1
 set BUILD_RESULT=%errorlevel%
 
 call :LOGINFO "Gradle build completed with exit code: %BUILD_RESULT%"
@@ -328,8 +348,8 @@ if %BUILD_RESULT% neq 0 (
     call :LOGERROR "3. Verify Android SDK is properly installed with required API levels"
     call :LOGERROR "4. Try manual commands:"
     call :LOGERROR "   cd android"
-    call :LOGERROR "   gradlew clean"
-    call :LOGERROR "   gradlew assembleDebug --stacktrace"
+    call :LOGERROR "   gradlew.bat clean"
+    call :LOGERROR "   gradlew.bat assembleDebug --stacktrace"
     call :LOGERROR "5. Check available memory (Gradle needs 2-4GB RAM)"
     call :LOGERROR "6. Consider using EAS Build for cloud-based building:"
     call :LOGERROR "   npx eas build --platform android"
