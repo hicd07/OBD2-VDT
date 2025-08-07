@@ -24,7 +24,8 @@
         "android.permission.BLUETOOTH_SCAN",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION"
-      ]
+      ],
+      "package": "com.hicd07.obd2vdt
     },
     "web": {
       "bundler": "metro",
