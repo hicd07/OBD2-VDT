@@ -7,7 +7,7 @@ echo ========================================
 
 REM Step 1: Install Node.js dependencies
 echo.
-echo [1/5] Installing Node.js dependencies...
+echo [1/6] Installing Node.js dependencies...
 call npm install
 if %errorlevel% neq 0 (
     echo ERROR: npm install failed. Exiting.
@@ -16,10 +16,20 @@ if %errorlevel% neq 0 (
 )
 echo ✓ Dependencies installed successfully
 
-REM Step 2: Generate native Android project files (prebuild)
+REM Step 2: Clean any existing android directory to avoid conflicts
 echo.
-echo [2/5] Generating native Android project files...
-call npx expo prebuild --platform android --no-install
+echo [2/6] Cleaning existing Android project...
+if exist "android" (
+    rmdir /s /q android
+    echo ✓ Cleaned existing Android project
+) else (
+    echo ✓ No existing Android project to clean
+)
+
+REM Step 3: Generate native Android project files (prebuild)
+echo.
+echo [3/6] Generating native Android project files...
+call npx expo prebuild --platform android --no-install --clean
 if %errorlevel% neq 0 (
     echo ERROR: expo prebuild failed. Exiting.
     pause
@@ -27,9 +37,9 @@ if %errorlevel% neq 0 (
 )
 echo ✓ Native Android project generated
 
-REM Step 3: Configure Android SDK location
+REM Step 4: Configure Android SDK location
 echo.
-echo [3/5] Configuring Android SDK location...
+echo [4/6] Configuring Android SDK location...
 
 REM Check if ANDROID_HOME is set
 if defined ANDROID_HOME (
@@ -66,23 +76,34 @@ echo Creating android/local.properties...
 echo sdk.dir=%SDK_PATH:\=\\% > android\local.properties
 echo ✓ Android SDK configured
 
-REM Step 4: Navigate to Android directory
+REM Step 5: Fix Gradle compatibility issues
 echo.
-echo [4/5] Preparing Android build environment...
+echo [5/6] Fixing Gradle compatibility issues...
+
+REM Update gradle wrapper to use a more stable version
+echo Updating Gradle wrapper to version 8.10.2...
 cd android
+call gradlew wrapper --gradle-version 8.10.2 --distribution-type bin
 if %errorlevel% neq 0 (
-    echo ERROR: Could not find android directory. Exiting.
-    pause
-    exit /b %errorlevel%
+    echo WARNING: Failed to update Gradle wrapper, continuing with existing version...
 )
 
-REM Step 5: Build the APK
+REM Clean any cached build files
+echo Cleaning build cache...
+call gradlew clean
+if %errorlevel% neq 0 (
+    echo WARNING: Gradle clean failed, continuing...
+)
+
+echo ✓ Gradle compatibility fixes applied
+
+REM Step 6: Build the APK
 echo.
-echo [5/5] Building Android APK...
+echo [6/6] Building Android APK...
 echo This may take several minutes on first build...
 
 REM Build debug APK (unsigned, for testing)
-call gradlew assembleDebug
+call gradlew assembleDebug --warning-mode all --no-daemon
 if %errorlevel% neq 0 (
     echo.
     echo ERROR: Gradle build failed.
@@ -91,6 +112,7 @@ if %errorlevel% neq 0 (
     echo 1. Ensure you have JDK 17 or higher installed
     echo 2. Check that Android SDK is properly installed
     echo 3. Try running: gradlew clean assembleDebug
+    echo 4. Check the problems report for detailed errors
     echo.
     pause
     exit /b %errorlevel%
