@@ -368,37 +368,3 @@ goto :eof
 echo [ERROR] %~1
 echo [%date% %time%] ERROR: %~1 >> "%LOGFILE%"
 goto :eof
-
-:ERROR_EXIT
-call :LOGERROR ""
-call :LOGERROR "Build failed. Check the log file for details: %LOGFILE%"
-call :LOGERROR ""
-echo.
-echo ========================================
-echo BUILD FAILED - PRESS ANY KEY TO EXIT
-echo ========================================
-echo Log file location: %LOGFILE%
-echo.
-echo The command window will remain open so you can:
-echo 1. Review the error messages above
-echo 2. Copy any relevant information
-echo 3. Check the detailed log file
-echo.
-cd ..
-pause
-exit /b 1
-
-:SUCCESS_EXIT
-echo.
-echo ========================================
-echo BUILD COMPLETED - PRESS ANY KEY TO EXIT  
-echo ========================================
-echo Log file location: %LOGFILE%
-echo.
-echo The command window will remain open so you can:
-echo 1. Review the build results above
-echo 2. Copy the APK installation instructions
-echo 3. Check the detailed log file
-echo.
-pause
-exit /b 0
