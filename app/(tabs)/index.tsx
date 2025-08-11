@@ -20,90 +20,109 @@ import { bluetoothService } from '@/services/bluetoothService';
 import { aiService } from '@/services/aiService';
 import { useLanguage } from '@/hooks/useLanguage';
 
+const DEFAULT_SETTINGS: AppSettings = {
+  testMode: true,
+  aiMode: false,
+  geminiApiKey: '',
+  language: 'en',
+};
+
 export default function ScannerTab() {
   const { t } = useLanguage();
   const [connectedDevice, setConnectedDevice] = useState<BluetoothDevice | null>(null);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [dtcCodes, setDtcCodes] = useState<DTCCode[]>([]);
-  const [settings, setSettings] = useState<AppSettings>({
-    testMode: true,
-    aiMode: false,
-    geminiApiKey: '',
-    language: 'en',
-  });
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
   useEffect(() => {
-    loadVehicleInfo();
-    loadSettings();
+    initializeData();
   }, []);
 
-  // Listen for settings changes and update local state
+  const initializeData = async () => {
+    await Promise.all([loadVehicleInfo(), loadSettings()]);
+  };
+
   useFocusEffect(
     React.useCallback(() => {
       const checkForSettingsChanges = async () => {
-        const currentSettings = await StorageService.getSettings();
-        if (currentSettings.testMode !== settings.testMode || 
-            currentSettings.aiMode !== settings.aiMode ||
-            currentSettings.geminiApiKey !== settings.geminiApiKey) {
-          setSettings(currentSettings);
-          bluetoothService.setTestMode(currentSettings.testMode);
-          if (currentSettings.geminiApiKey) {
-            aiService.setApiKey(currentSettings.geminiApiKey);
+        try {
+          const currentSettings = await StorageService.getSettings();
+          const hasChanges = ['testMode', 'aiMode', 'geminiApiKey'].some(
+            key => currentSettings[key as keyof AppSettings] !== settings[key as keyof AppSettings]
+          );
+          
+          if (hasChanges) {
+            updateSettingsState(currentSettings);
           }
+        } catch (error) {
+          console.error('Error checking settings changes:', error);
         }
       };
-
       checkForSettingsChanges();
     }, [settings])
   );
 
+  const updateSettingsState = (newSettings: AppSettings) => {
+    setSettings(newSettings);
+    bluetoothService.setTestMode(newSettings.testMode);
+    if (newSettings.geminiApiKey) {
+      aiService.setApiKey(newSettings.geminiApiKey);
+    }
+  };
+
   const loadVehicleInfo = async () => {
-    const saved = await StorageService.getVehicleInfo();
-    if (saved) {
-      setVehicle(saved);
+    try {
+      const saved = await StorageService.getVehicleInfo();
+      if (saved) {
+        setVehicle(saved);
+      }
+    } catch (error) {
+      console.error('Error loading vehicle info:', error);
     }
   };
 
   const loadSettings = async () => {
-    const savedSettings = await StorageService.getSettings();
-    setSettings(savedSettings);
-    bluetoothService.setTestMode(savedSettings.testMode);
-    if (savedSettings.geminiApiKey) {
-      aiService.setApiKey(savedSettings.geminiApiKey);
+    try {
+      const savedSettings = await StorageService.getSettings();
+      updateSettingsState(savedSettings);
+    } catch (error) {
+      console.error('Error loading settings:', error);
     }
   };
 
-  const updateTestMode = async (enabled: boolean) => {
-    const newSettings = { ...settings, testMode: enabled };
-    setSettings(newSettings);
-    await StorageService.saveSettings(newSettings);
-    bluetoothService.setTestMode(enabled);
-    
-    // Disconnect if switching modes
-    if (connectedDevice) {
-      setConnectedDevice(null);
+  const updateSetting = async (key: keyof AppSettings, value: any) => {
+    try {
+      const newSettings = { ...settings, [key]: value };
+      setSettings(newSettings);
+      await StorageService.saveSettings(newSettings);
+      
+      if (key === 'testMode') {
+        bluetoothService.setTestMode(value);
+        if (connectedDevice) {
+          setConnectedDevice(null);
+        }
+      }
+    } catch (error) {
+      console.error(`Error updating ${key}:`, error);
     }
-  };
-
-  const updateAIMode = async (enabled: boolean) => {
-    const newSettings = { ...settings, aiMode: enabled };
-    setSettings(newSettings);
-    await StorageService.saveSettings(newSettings);
   };
 
   const handleScanComplete = async (codes: DTCCode[]) => {
     setDtcCodes(codes);
 
-    // Save scan session to history
-    if (vehicle) {
+    if (!vehicle) return;
+
+    try {
       const session: ScanSession = {
         id: `scan-${Date.now()}`,
         timestamp: new Date(),
         vehicle,
         codes,
-        duration: 3000, // Mock duration
+        duration: 3000,
       };
       await StorageService.saveScanSession(session);
+    } catch (error) {
+      console.error('Error saving scan session:', error);
     }
   };
 
@@ -131,7 +150,7 @@ export default function ScannerTab() {
           <Text style={styles.settingLabel}>{t('testMode')}</Text>
           <Switch
             value={settings.testMode}
-            onValueChange={updateTestMode}
+            onValueChange={(value) => updateSetting('testMode', value)}
             trackColor={{ false: '#d1d5db', true: '#fbbf24' }}
             thumbColor={settings.testMode ? '#f97316' : '#f3f4f6'}
           />
@@ -142,7 +161,7 @@ export default function ScannerTab() {
           <Text style={styles.settingLabel}>{t('aiMode')}</Text>
           <Switch
             value={settings.aiMode}
-            onValueChange={updateAIMode}
+            onValueChange={(value) => updateSetting('aiMode', value)}
             trackColor={{ false: '#d1d5db', true: '#fbbf24' }}
             thumbColor={settings.aiMode ? '#f97316' : '#f3f4f6'}
           />

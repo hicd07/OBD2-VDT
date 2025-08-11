@@ -24,11 +24,23 @@ interface Props {
   aiMode: boolean;
 }
 
+const SEVERITY_ICONS = {
+  low: CheckCircle,
+  medium: AlertCircle,
+  high: AlertTriangle,
+  critical: XCircle,
+} as const;
+
 export default function DTCResults({ codes, vehicle, onClearCodes, aiMode }: Props) {
   const [aiModalVisible, setAiModalVisible] = useState(false);
   const [selectedCode, setSelectedCode] = useState<DTCCode | null>(null);
   const [aiResponse, setAiResponse] = useState<AIDiagnosticResponse | null>(null);
   const [loadingAI, setLoadingAI] = useState(false);
+
+  const buildSearchQuery = (code: DTCCode): string => {
+    if (!vehicle) return '';
+    return `${code.code} ${vehicle.brand} ${vehicle.model} ${vehicle.year} diagnostic trouble code`;
+  };
 
   const searchDTCCode = async (code: DTCCode) => {
     if (aiMode) {
@@ -41,7 +53,7 @@ export default function DTCResults({ codes, vehicle, onClearCodes, aiMode }: Pro
       return;
     }
 
-    const searchQuery = `${code.code} ${vehicle.brand} ${vehicle.model} ${vehicle.year} diagnostic trouble code`;
+    const searchQuery = buildSearchQuery(code);
     const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
 
     try {
@@ -51,14 +63,16 @@ export default function DTCResults({ codes, vehicle, onClearCodes, aiMode }: Pro
     }
   };
 
-  const getAIDiagnostic = async (code: DTCCode) => {
-    if (!vehicle) {
-      Alert.alert('Error', 'Vehicle information is required for AI analysis');
-      return;
-    }
+  const validateAIPrerequisites = (code: DTCCode): string | null => {
+    if (!vehicle) return 'Vehicle information is required for AI analysis';
+    if (!aiService.hasApiKey()) return 'Gemini API key not configured. Please set your API key in Settings.';
+    return null;
+  };
 
-    if (!aiService.hasApiKey()) {
-      Alert.alert('Error', 'Gemini API key not configured. Please set your API key in Settings.');
+  const getAIDiagnostic = async (code: DTCCode) => {
+    const validationError = validateAIPrerequisites(code);
+    if (validationError) {
+      Alert.alert('Error', validationError);
       return;
     }
 
@@ -68,7 +82,7 @@ export default function DTCResults({ codes, vehicle, onClearCodes, aiMode }: Pro
     setAiResponse(null);
 
     try {
-      const response = await aiService.getDiagnosticAnalysis(code, vehicle);
+      const response = await aiService.getDiagnosticAnalysis(code, vehicle!);
       setAiResponse(response);
     } catch (error) {
       setAiResponse({
@@ -89,19 +103,8 @@ export default function DTCResults({ codes, vehicle, onClearCodes, aiMode }: Pro
   const getSeverityIcon = (severity: string) => {
     const color = getSeverityColor(severity);
     const size = 20;
-
-    switch (severity) {
-      case 'low':
-        return <CheckCircle size={size} color={color} strokeWidth={2} />;
-      case 'medium':
-        return <AlertCircle size={size} color={color} strokeWidth={2} />;
-      case 'high':
-        return <AlertTriangle size={size} color={color} strokeWidth={2} />;
-      case 'critical':
-        return <XCircle size={size} color={color} strokeWidth={2} />;
-      default:
-        return <AlertCircle size={size} color={color} strokeWidth={2} />;
-    }
+    const IconComponent = SEVERITY_ICONS[severity as keyof typeof SEVERITY_ICONS] || AlertCircle;
+    return <IconComponent size={size} color={color} strokeWidth={2} />;
   };
 
   const renderDTCCode = ({ item }: { item: DTCCode }) => (

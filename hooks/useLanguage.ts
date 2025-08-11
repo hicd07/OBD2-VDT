@@ -9,6 +9,8 @@ interface LanguageContextType {
   t: (key: string) => string;
 }
 
+type TranslationKey = keyof typeof translations.en;
+
 const translations = {
   en: {
     // General
@@ -271,22 +273,33 @@ export const useLanguage = () => {
     currentLanguage = lang;
     setLanguageState(lang);
     
-    // Save to storage
-    const settings = await StorageService.getSettings();
-    await StorageService.saveSettings({ ...settings, language: lang });
+    try {
+      const settings = await StorageService.getSettings();
+      await StorageService.saveSettings({ ...settings, language: lang });
+    } catch (error) {
+      console.error('Failed to save language setting:', error);
+    }
   };
 
   const t = (key: string): string => {
-    return translations[language][key as keyof typeof translations['en']] || key;
+    const translation = translations[language][key as TranslationKey];
+    if (!translation) {
+      console.warn(`Missing translation for key: ${key}`);
+      return key;
+    }
+    return translation;
   };
 
   useEffect(() => {
-    // Load language from storage on mount
     const loadLanguage = async () => {
-      const settings = await StorageService.getSettings();
-      if (settings.language && settings.language !== language) {
-        currentLanguage = settings.language as Language;
-        setLanguageState(settings.language as Language);
+      try {
+        const settings = await StorageService.getSettings();
+        if (settings.language && settings.language !== language) {
+          currentLanguage = settings.language as Language;
+          setLanguageState(settings.language as Language);
+        }
+      } catch (error) {
+        console.error('Failed to load language setting:', error);
       }
     };
     loadLanguage();

@@ -4,6 +4,19 @@ import { DTCCode, BluetoothDevice } from '@/types/obd2';
 import { DTC_DESCRIPTIONS } from '@/constants/dtcCodes';
 import { permissionService } from '@/services/permissionService';
 
+// Mock devices for testing
+const MOCK_DEVICES: BluetoothDevice[] = [
+  { id: '1', name: 'ELM327 Scanner', address: '00:11:22:33:44:55', connected: false },
+  { id: '2', name: 'OBD2 Pro', address: '11:22:33:44:55:66', connected: false },
+  { id: '3', name: 'BlueDriver', address: '22:33:44:55:66:77', connected: false },
+];
+
+// OBD2 device name patterns
+const OBD2_DEVICE_PATTERNS = ['obd', 'elm', 'scanner', 'blue', 'torque', 'obdlink'];
+
+// OBD2 initialization commands
+const OBD2_INIT_COMMANDS = ['ATZ', 'ATE0', 'ATL0', 'ATS0', 'ATH1', 'ATSP0'];
+
 class BluetoothOBD2Service {
   private connectedDevice: BluetoothDevice | null = null;
   private isScanning = false;
@@ -19,102 +32,48 @@ class BluetoothOBD2Service {
     return this.testMode;
   }
   async getAvailableDevices(): Promise<BluetoothDevice[]> {
-    // Check permissions before scanning
+  private async checkPermissions(): Promise<void> {
+    if (this.testMode) return;
+    
     const permissions = await permissionService.checkAllPermissions();
-    if (!permissions.bluetooth && !this.testMode) {
-      throw new Error('Bluetooth permission is required to scan for devices');
+    if (!permissions.bluetooth) {
+      throw new Error('Bluetooth permission is required');
     }
+  }
 
-    // In production mode, return empty array - no mock devices
-    if (!this.testMode) {
-      return [];
-    }
+  private isOBD2Device(deviceName: string): boolean {
+    const name = deviceName.toLowerCase();
+    return OBD2_DEVICE_PATTERNS.some(pattern => name.includes(pattern));
+  }
 
-    if (Platform.OS === 'web' || this.testMode) {
-      // Mock devices for web testing
-      return [
-        { id: '1', name: 'ELM327 Scanner', address: '00:11:22:33:44:55', connected: false },
-        { id: '2', name: 'OBD2 Pro', address: '11:22:33:44:55:66', connected: false },
-        { id: '3', name: 'BlueDriver', address: '22:33:44:55:66:77', connected: false },
-      ];
-    }
-
-    // Check if native module is available
+  private async getPairedOBD2Devices(): Promise<BluetoothDevice[]> {
     if (!RNBluetoothClassic) {
       throw new Error('Bluetooth functionality requires a custom development build. Please use test mode in Expo Go.');
     }
 
-    try {
-      // Get paired Bluetooth devices
-      const pairedDevices = await RNBluetoothClassic.getBondedDevices();
-      
-      // Filter for OBD2 devices (typically contain "OBD", "ELM", or similar)
-      const obd2Devices = pairedDevices
-        .filter(device => 
-          device.name?.toLowerCase().includes('obd') ||
-          device.name?.toLowerCase().includes('elm') ||
-          device.name?.toLowerCase().includes('scanner') ||
-          device.name?.toLowerCase().includes('blue') ||
-          device.name?.toLowerCase().includes('torque') ||
-          device.name?.toLowerCase().includes('obdlink')
-        )
-        .map(device => ({
-          id: device.id,
-          name: device.name || 'Unknown Device',
-          address: device.address,
-          connected: false,
-        }));
+    const pairedDevices = await RNBluetoothClassic.getBondedDevices();
+    return pairedDevices
+      .filter(device => device.name && this.isOBD2Device(device.name))
+      .map(device => ({
+        id: device.id,
+        name: device.name || 'Unknown Device',
+        address: device.address,
+        connected: false,
+      }));
+  }
 
-      return obd2Devices;
-    } catch (error) {
-      console.error('Error getting Bluetooth devices:', error);
-      throw new Error('Bluetooth scanning failed. Please use test mode in Expo Go or create a development build.');
+    await this.checkPermissions();
+
+    if (Platform.OS === 'web' || this.testMode) {
+      return MOCK_DEVICES;
     }
+
+    return this.getPairedOBD2Devices();
   }
 
   async scanForDevices(): Promise<BluetoothDevice[]> {
     this.hasScanned = true;
-    
-    if (this.testMode) {
-      return this.getAvailableDevices();
-    }
-    
-    // In production mode, actually scan for real devices
-    if (Platform.OS === 'web') {
-      return [];
-    }
-    
-    // Check if native module is available
-    if (!RNBluetoothClassic) {
-      throw new Error('Bluetooth functionality requires a custom development build. Please use test mode in Expo Go.');
-    }
-    
-    try {
-      // Get paired Bluetooth devices
-      const pairedDevices = await RNBluetoothClassic.getBondedDevices();
-      
-      // Filter for OBD2 devices
-      const obd2Devices = pairedDevices
-        .filter(device => 
-          device.name?.toLowerCase().includes('obd') ||
-          device.name?.toLowerCase().includes('elm') ||
-          device.name?.toLowerCase().includes('scanner') ||
-          device.name?.toLowerCase().includes('blue') ||
-          device.name?.toLowerCase().includes('torque') ||
-          device.name?.toLowerCase().includes('obdlink')
-        )
-        .map(device => ({
-          id: device.id,
-          name: device.name || 'Unknown Device',
-          address: device.address,
-          connected: false,
-        }));
-
-      return obd2Devices;
-    } catch (error) {
-      console.error('Error scanning for Bluetooth devices:', error);
-      return [];
-    }
+    return this.getAvailableDevices();
   }
 
   hasUserScanned(): boolean {
@@ -122,34 +81,24 @@ class BluetoothOBD2Service {
   }
 
   async connectToDevice(device: BluetoothDevice): Promise<boolean> {
-    // Check permissions before connecting
-    const permissions = await permissionService.checkAllPermissions();
-    if (!permissions.bluetooth && !this.testMode) {
-      throw new Error('Bluetooth permission is required to connect to devices');
-    }
+    await this.checkPermissions();
 
     if (Platform.OS === 'web' || this.testMode) {
-      // Mock connection for web
       await new Promise(resolve => setTimeout(resolve, 2000));
       this.connectedDevice = { ...device, connected: true };
       return true;
     }
 
-    // Check if native module is available
     if (!RNBluetoothClassic) {
       throw new Error('Bluetooth functionality requires a custom development build. Please use test mode in Expo Go.');
     }
 
     try {
-      // Connect to the Bluetooth device
       const connection = await RNBluetoothClassic.connectToDevice(device.address);
       
       if (connection) {
         this.connectedDevice = { ...device, connected: true };
-        
-        // Initialize OBD2 communication
         await this.initializeOBD2();
-        
         return true;
       }
       return false;
@@ -173,40 +122,50 @@ class BluetoothOBD2Service {
   private async initializeOBD2(): Promise<void> {
     if (this.testMode || Platform.OS === 'web') return;
 
-    try {
-      // Send initialization commands to OBD2 scanner
-      await this.sendCommand('ATZ'); // Reset
-      await this.sendCommand('ATE0'); // Echo off
-      await this.sendCommand('ATL0'); // Linefeeds off
-      await this.sendCommand('ATS0'); // Spaces off
-      await this.sendCommand('ATH1'); // Headers on
-      await this.sendCommand('ATSP0'); // Set protocol to auto
-    } catch (error) {
-      console.error('OBD2 initialization error:', error);
-      throw new Error('Failed to initialize OBD2 communication');
+    for (const command of OBD2_INIT_COMMANDS) {
+      try {
+        await this.sendCommand(command);
+      } catch (error) {
+        console.error(`OBD2 initialization error for command ${command}:`, error);
+        throw new Error(`Failed to initialize OBD2 communication at command: ${command}`);
+      }
     }
   }
 
   private async sendCommand(command: string): Promise<string> {
     if (this.testMode || Platform.OS === 'web' || !RNBluetoothClassic) {
-      return 'OK'; // Mock response
+      return 'OK';
     }
 
     if (!this.connectedDevice) {
       throw new Error('No device connected');
     }
 
-    try {
-      await RNBluetoothClassic.writeToDevice(this.connectedDevice.address, command + '\r');
-      const response = await RNBluetoothClassic.readFromDevice(this.connectedDevice.address);
-      return response;
-    } catch (error) {
-      console.error('Command send error:', error);
-      throw new Error(`Failed to send command: ${command}`);
-    }
+    await RNBluetoothClassic.writeToDevice(this.connectedDevice.address, command + '\r');
+    return await RNBluetoothClassic.readFromDevice(this.connectedDevice.address);
   }
+
   getConnectedDevice(): BluetoothDevice | null {
     return this.connectedDevice;
+  }
+
+  private generateMockDTCCodes(): DTCCode[] {
+    const mockCodes = ['P0171', 'P0301', 'P0420', 'P0442'];
+    const randomCodes = mockCodes.slice(0, Math.floor(Math.random() * 4) + 1);
+
+    return randomCodes.map(code => {
+      const info = DTC_DESCRIPTIONS[code] || { 
+        description: 'Unknown code', 
+        severity: 'medium' as const 
+      };
+      return {
+        id: `${code}-${Date.now()}`,
+        code,
+        description: info.description,
+        severity: info.severity,
+        timestamp: new Date(),
+      };
+    });
   }
 
   async scanForDTCCodes(): Promise<DTCCode[]> {
@@ -216,53 +175,29 @@ class BluetoothOBD2Service {
 
     this.isScanning = true;
 
-    if (this.testMode || Platform.OS === 'web') {
-      // Simulate scanning process
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
-      // Mock DTC codes that might be found
-      const mockCodes = ['P0171', 'P0301', 'P0420', 'P0442'];
-      const randomCodes = mockCodes.slice(0, Math.floor(Math.random() * 4) + 1);
-
-      const dtcCodes: DTCCode[] = randomCodes.map(code => {
-        const info = DTC_DESCRIPTIONS[code] || { description: 'Unknown code', severity: 'medium' as const };
-        return {
-          id: `${code}-${Date.now()}`,
-          code,
-          description: info.description,
-          severity: info.severity,
-          timestamp: new Date(),
-        };
-      });
-
-      this.isScanning = false;
-      return dtcCodes;
-    }
-
     try {
-      // Real OBD2 DTC scanning
-      const response = await this.sendCommand('03'); // Request stored DTCs
-      const dtcCodes = this.parseDTCResponse(response);
-      
-      this.isScanning = false;
-      return dtcCodes;
+      if (this.testMode || Platform.OS === 'web') {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        return this.generateMockDTCCodes();
+      }
+
+      const response = await this.sendCommand('03');
+      return this.parseDTCResponse(response);
     } catch (error) {
-      this.isScanning = false;
       console.error('DTC scan error:', error);
       throw new Error('Failed to scan for DTC codes');
-    }
-  }
+    } finally {
+      this.isScanning = false;
+      return dtcCodes;
+
 
   private parseDTCResponse(response: string): DTCCode[] {
     // Parse real OBD2 DTC response
     const codes: DTCCode[] = [];
-    
-    // Remove whitespace and split by lines
     const lines = response.replace(/\s/g, '').split('\n');
     
     for (const line of lines) {
       if (line.length >= 4 && line !== 'NODATA') {
-        // Parse hex codes and convert to DTC format
         for (let i = 0; i < line.length; i += 4) {
           const hexCode = line.substr(i, 4);
           if (hexCode.length === 4 && hexCode !== '0000') {
@@ -300,39 +235,31 @@ class BluetoothOBD2Service {
     return this.isScanning;
   }
 
+  private generateMockVehicleInfo() {
+    const mockVehicles = [
+      { brand: 'Toyota', model: 'Camry', year: '2018' },
+      { brand: 'Honda', model: 'Civic', year: '2020' },
+      { brand: 'Ford', model: 'F-150', year: '2019' },
+      { brand: 'BMW', model: 'X3', year: '2021' },
+      { brand: 'Chevrolet', model: 'Malibu', year: '2017' },
+    ];
+    return mockVehicles[Math.floor(Math.random() * mockVehicles.length)];
+  }
+
   async detectVehicleInfo(): Promise<{ brand: string; model: string; year: string } | null> {
     if (!this.connectedDevice) {
       throw new Error('No device connected');
     }
 
     if (this.testMode || Platform.OS === 'web') {
-      // Simulate vehicle detection process
       await new Promise(resolve => setTimeout(resolve, 4000));
-
-      // Mock vehicle detection results
-      const mockVehicles = [
-        { brand: 'Toyota', model: 'Camry', year: '2018' },
-        { brand: 'Honda', model: 'Civic', year: '2020' },
-        { brand: 'Ford', model: 'F-150', year: '2019' },
-        { brand: 'BMW', model: 'X3', year: '2021' },
-        { brand: 'Chevrolet', model: 'Malibu', year: '2017' },
-      ];
-
-      return mockVehicles[Math.floor(Math.random() * mockVehicles.length)];
+      return this.generateMockVehicleInfo();
     }
 
     try {
-      // Real vehicle detection using VIN
-      const vinResponse = await this.sendCommand('0902'); // Request VIN
+      const vinResponse = await this.sendCommand('0902');
       const vin = this.parseVINResponse(vinResponse);
-      
-      if (vin) {
-        // In a real implementation, you would decode the VIN
-        // For now, return null to indicate manual input is needed
-        return null;
-      }
-      
-      return null;
+      return vin ? null : null; // Simplified - would decode VIN in real implementation
     } catch (error) {
       console.error('Vehicle detection error:', error);
       return null;
@@ -340,15 +267,9 @@ class BluetoothOBD2Service {
   }
 
   private parseVINResponse(response: string): string | null {
-    // Parse VIN from OBD2 response
-    // This is a simplified implementation
     try {
       const cleanResponse = response.replace(/\s/g, '');
-      if (cleanResponse.length >= 34) {
-        // Extract VIN from response (simplified)
-        return cleanResponse.substring(6, 23);
-      }
-      return null;
+      return cleanResponse.length >= 34 ? cleanResponse.substring(6, 23) : null;
     } catch (error) {
       return null;
     }
