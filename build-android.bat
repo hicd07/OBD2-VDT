@@ -4,21 +4,6 @@ setlocal enabledelayedexpansion
 REM Change to the directory where this batch file is located
 cd /d "%~dp0"
 
-REM Verify we're in the correct project directory
-if not exist "package.json" (
-    echo [ERROR] package.json not found. This script must be run from the project root directory.
-    echo Current directory: %CD%
-    pause
-    exit /b 1
-)
-
-if not exist "app.json" (
-    echo [ERROR] app.json not found. This doesn't appear to be an Expo project.
-    echo Current directory: %CD%
-    pause
-    exit /b 1
-)
-
 REM Set console properties for better visibility
 title Building Android APK for OBD2-VDT Project
 color 0A
@@ -41,15 +26,30 @@ call :LOGINFO "Log file: %LOGFILE%"
 call :LOGINFO "Project directory: %CD%"
 call :LOGINFO "========================================="
 
+REM Verify we're in the correct project directory
+if not exist "package.json" (
+    call :LOGERROR "package.json not found. This script must be run from the project root directory."
+    call :LOGERROR "Current directory: %CD%"
+    call :LOGERROR "Please ensure this script is in the same folder as package.json and app.json"
+    goto :ERROR_EXIT
+)
+
+if not exist "app.json" (
+    call :LOGERROR "app.json not found. This doesn't appear to be an Expo project."
+    call :LOGERROR "Current directory: %CD%"
+    goto :ERROR_EXIT
+)
+
 REM Check prerequisites
 call :LOGINFO ""
-call :LOGINFO "[0/9] Checking prerequisites..."
+call :LOGINFO "[1/10] Checking prerequisites..."
 
 REM Check Node.js
 node --version >nul 2>&1
 if %errorlevel% neq 0 (
     call :LOGERROR "Node.js is not installed or not in PATH"
     call :LOGERROR "Please install Node.js from https://nodejs.org/"
+    call :LOGERROR "Minimum required version: Node.js 18+"
     goto :ERROR_EXIT
 ) else (
     for /f "tokens=*" %%i in ('node --version') do call :LOGINFO "✓ Node.js version: %%i"
@@ -64,31 +64,25 @@ if %errorlevel% neq 0 (
     for /f "tokens=*" %%i in ('npm --version') do call :LOGINFO "✓ npm version: %%i"
 )
 
-REM Check if this is an Expo project
-if not exist "package.json" (
-    call :LOGERROR "package.json not found. Are you in the correct directory?"
-    call :LOGERROR "Current directory: %CD%"
-    goto :ERROR_EXIT
-)
-
-findstr /c:"expo" package.json >nul
-if %errorlevel% neq 0 (
-    call :LOGWARN "This doesn't appear to be an Expo project"
-)
-
 REM Check Java version
 java -version >nul 2>&1
 if %errorlevel% neq 0 (
-    call :LOGWARN "Java not found in PATH. You may need to install JDK 17+ for Gradle builds"
+    call :LOGWARN "Java not found in PATH. You need JDK 17+ for Android builds"
+    call :LOGWARN "Please install JDK 17 or higher from:"
+    call :LOGWARN "  - Oracle JDK: https://www.oracle.com/java/technologies/downloads/"
+    call :LOGWARN "  - OpenJDK: https://adoptium.net/"
+    call :LOGWARN "After installation, add Java to your PATH environment variable"
+    goto :ERROR_EXIT
 ) else (
     call :LOGINFO "✓ Java is available"
+    java -version >>"%LOGFILE%" 2>&1
 )
 
 call :LOGINFO "✓ Prerequisites check completed"
 
-REM Step 1: Install Node.js dependencies
+REM Step 2: Install Node.js dependencies
 call :LOGINFO ""
-call :LOGINFO "[1/9] Installing Node.js dependencies..."
+call :LOGINFO "[2/10] Installing Node.js dependencies..."
 call :LOGINFO "Running: npm install"
 
 npm install >>"%LOGFILE%" 2>&1
@@ -96,28 +90,27 @@ if %errorlevel% neq 0 (
     call :LOGERROR "npm install failed. Check the log file for details: %LOGFILE%"
     call :LOGERROR "Common solutions:"
     call :LOGERROR "  - Clear npm cache: npm cache clean --force"
-    call :LOGERROR "  - Delete node_modules and try again"
+    call :LOGERROR "  - Delete node_modules and try again: rmdir /s node_modules"
     call :LOGERROR "  - Check internet connection"
     goto :ERROR_EXIT
 )
 call :LOGINFO "✓ Dependencies installed successfully"
 
-REM Step 2: Clean Expo cache and prebuilds
+REM Step 3: Clean Expo cache and prebuilds
 call :LOGINFO ""
-call :LOGINFO "[2/9] Cleaning Expo cache and prebuilds..."
+call :LOGINFO "[3/10] Cleaning Expo cache and prebuilds..."
 call :LOGINFO "Running: npx expo clean"
 
 npx expo clean >>"%LOGFILE%" 2>&1
 if %errorlevel% neq 0 (
     call :LOGWARN "expo clean failed, continuing anyway..."
-    call :LOGWARN "This may cause issues with cached files"
 ) else (
     call :LOGINFO "✓ Expo cache cleaned successfully"
 )
 
-REM Step 3: Clean any existing android directory to avoid conflicts
+REM Step 4: Clean any existing android directory
 call :LOGINFO ""
-call :LOGINFO "[3/9] Cleaning existing Android project..."
+call :LOGINFO "[4/10] Cleaning existing Android project..."
 if exist "android" (
     call :LOGINFO "Removing existing android directory..."
     rmdir /s /q android >>"%LOGFILE%" 2>&1
@@ -131,9 +124,9 @@ if exist "android" (
     call :LOGINFO "✓ No existing Android project to clean"
 )
 
-REM Step 4: Generate native Android project files (prebuild)
+REM Step 5: Generate native Android project files (prebuild)
 call :LOGINFO ""
-call :LOGINFO "[4/9] Generating native Android project files..."
+call :LOGINFO "[5/10] Generating native Android project files..."
 call :LOGINFO "Running: npx expo prebuild --platform android --no-install --clean"
 
 npx expo prebuild --platform android --no-install --clean >>"%LOGFILE%" 2>&1
@@ -147,9 +140,16 @@ if %errorlevel% neq 0 (
 )
 call :LOGINFO "✓ Native Android project generated"
 
-REM Step 5: Configure Android SDK location
+REM Step 6: Verify android directory was created
+if not exist "android" (
+    call :LOGERROR "Android directory was not created by prebuild"
+    call :LOGERROR "This indicates the prebuild step failed silently"
+    goto :ERROR_EXIT
+)
+
+REM Step 7: Configure Android SDK location
 call :LOGINFO ""
-call :LOGINFO "[5/9] Configuring Android SDK location..."
+call :LOGINFO "[6/10] Configuring Android SDK location..."
 
 REM Check if ANDROID_HOME is set
 if defined ANDROID_HOME (
@@ -216,9 +216,9 @@ if exist "android\local.properties" (
     goto :ERROR_EXIT
 )
 
-REM Step 6: Check and fix Gradle compatibility issues
+REM Step 8: Verify Gradle wrapper exists
 call :LOGINFO ""
-call :LOGINFO "[6/9] Checking and fixing Gradle compatibility issues..."
+call :LOGINFO "[7/10] Verifying Gradle wrapper..."
 call :LOGINFO "Changing to android directory: %CD%\android"
 
 cd android
@@ -228,7 +228,6 @@ if %errorlevel% neq 0 (
     goto :ERROR_EXIT
 )
 
-REM Verify Gradle wrapper exists
 if not exist "gradlew.bat" (
     call :LOGERROR "gradlew.bat not found in android directory"
     call :LOGERROR "This indicates the prebuild step may have failed"
@@ -246,26 +245,11 @@ if not exist "gradlew.bat" (
     call :LOGINFO "✓ Found gradlew.bat in android directory"
 )
 
-REM Check current Gradle version
-if exist "gradle\wrapper\gradle-wrapper.properties" (
-    call :LOGINFO "Current Gradle wrapper configuration:"
-    type "gradle\wrapper\gradle-wrapper.properties" >>"%LOGFILE%" 2>&1
-) else (
-    call :LOGWARN "gradle-wrapper.properties not found"
-)
+REM Step 9: Clean Gradle build cache
+call :LOGINFO ""
+call :LOGINFO "[8/10] Cleaning Gradle build cache..."
+call :LOGINFO "Running: gradlew.bat clean"
 
-REM Update gradle wrapper to use a stable version
-call :LOGINFO "Updating Gradle wrapper to version 8.0.2 (compatible with JDK 17+)..."
-call gradlew.bat wrapper --gradle-version 8.0.2 --distribution-type bin >>"%LOGFILE%" 2>&1
-if %errorlevel% neq 0 (
-    call :LOGWARN "Failed to update Gradle wrapper, continuing with existing version..."
-    call :LOGWARN "You may need to update manually if build fails"
-) else (
-    call :LOGINFO "✓ Gradle wrapper updated successfully"
-)
-
-REM Clean any cached build files
-call :LOGINFO "Cleaning Gradle build cache..."
 call gradlew.bat clean >>"%LOGFILE%" 2>&1
 if %errorlevel% neq 0 (
     call :LOGWARN "Gradle clean failed, continuing anyway..."
@@ -273,25 +257,47 @@ if %errorlevel% neq 0 (
     call :LOGINFO "✓ Gradle cache cleaned"
 )
 
-call :LOGINFO "✓ Gradle compatibility fixes applied"
-
-REM Step 7: Check Gradle daemon and system info
+REM Step 10: Build Android APK
 call :LOGINFO ""
-call :LOGINFO "[7/9] Checking Gradle daemon and system info..."
+call :LOGINFO "[9/10] Building Android APK..."
+call :LOGINFO "This may take 5-15 minutes on first build (downloading dependencies)..."
+call :LOGINFO "Building debug APK (unsigned, suitable for testing)..."
+call :LOGINFO "Starting Gradle build with verbose output..."
+call :LOGINFO "Running: gradlew.bat assembleDebug --info --warning-mode all --no-daemon --stacktrace"
 
-call :LOGINFO "Stopping any existing Gradle daemons..."
-call gradlew.bat --stop >>"%LOGFILE%" 2>&1
+call gradlew.bat assembleDebug --info --warning-mode all --no-daemon --stacktrace >>"%LOGFILE%" 2>&1
+set GRADLE_EXIT_CODE=%errorlevel%
 
-call :LOGINFO "System information:"
-call gradlew.bat --version >>"%LOGFILE%" 2>&1
+call :LOGINFO "Gradle build completed with exit code: %GRADLE_EXIT_CODE%"
 
-call :LOGINFO "✓ Gradle system check completed"
-
-    call :LOGERROR "Android directory contents:"
-    dir >>"%LOGFILE%" 2>&1
+if %GRADLE_EXIT_CODE% neq 0 (
+    call :LOGERROR ""
+    call :LOGERROR "========================================="
+    call :LOGERROR "GRADLE BUILD FAILED"
+    call :LOGERROR "========================================="
+    call :LOGERROR ""
+    call :LOGERROR "Build failed with exit code: %GRADLE_EXIT_CODE%"
+    call :LOGERROR "Full build log saved to: %LOGFILE%"
+    call :LOGERROR ""
+    call :LOGERROR "TROUBLESHOOTING STEPS:"
+    call :LOGERROR "1. Check the detailed log file above for specific errors"
+    call :LOGERROR "2. Ensure you have JDK 17 or higher installed"
+    call :LOGERROR "3. Verify Android SDK is properly installed with required API levels"
+    call :LOGERROR "4. Try manual commands:"
+    call :LOGERROR "   cd android"
+    call :LOGERROR "   gradlew clean"
+    call :LOGERROR "   gradlew assembleDebug --stacktrace"
+    call :LOGERROR "5. Check available memory (Gradle needs 2-4GB RAM)"
+    call :LOGERROR "6. Consider using EAS Build for cloud-based building:"
+    call :LOGERROR "   npx eas build --platform android"
+    call :LOGERROR ""
     goto :ERROR_EXIT
 )
-call :LOGINFO "Running: gradlew.bat assembleDebug --info --warning-mode all --no-daemon --stacktrace"
+
+REM Step 11: Locate and verify APK file
+call :LOGINFO ""
+call :LOGINFO "[10/10] Locating built APK file..."
+
 REM Check multiple possible APK locations
 set APK_PATH=
 if exist "app\build\outputs\apk\debug\app-debug.apk" (
@@ -313,8 +319,8 @@ if exist "app\build\outputs\apk\debug\app-debug.apk" (
             goto :APK_FOUND
         )
     )
-    call :LOGINFO "No APK files found anywhere in android directory"
-    call :LOGINFO "This suggests the Gradle build actually failed despite exit code 0"
+    call :LOGWARN "No APK files found anywhere in android directory"
+    call :LOGWARN "This suggests the Gradle build actually failed despite exit code 0"
 )
 
 :APK_FOUND
@@ -390,3 +396,28 @@ goto :eof
 echo [ERROR] %~1
 echo [%date% %time%] ERROR: %~1 >> "%LOGFILE%"
 goto :eof
+
+:ERROR_EXIT
+call :LOGERROR ""
+call :LOGERROR "========================================="
+call :LOGERROR "BUILD FAILED"
+call :LOGERROR "========================================="
+call :LOGERROR ""
+call :LOGERROR "Build failed at: %date% %time%"
+call :LOGERROR "Check the log file for details: %LOGFILE%"
+call :LOGERROR ""
+call :LOGERROR "For additional help:"
+call :LOGERROR "1. Review the troubleshooting section in BUILD_ANDROID_GUIDE.md"
+call :LOGERROR "2. Consider using EAS Build: npx eas build --platform android"
+call :LOGERROR "3. Check Expo documentation: https://docs.expo.dev/"
+call :LOGERROR ""
+if exist "android" cd ..
+pause
+exit /b 1
+
+:SUCCESS_EXIT
+call :LOGINFO ""
+call :LOGINFO "Build process completed successfully!"
+call :LOGINFO "Press any key to exit..."
+pause
+exit /b 0
