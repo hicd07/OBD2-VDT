@@ -31,7 +31,7 @@ class BluetoothOBD2Service {
   isTestMode(): boolean {
     return this.testMode;
   }
-  async getAvailableDevices(): Promise<BluetoothDevice[]> {
+
   private async checkPermissions(): Promise<void> {
     if (this.testMode) return;
     
@@ -62,6 +62,7 @@ class BluetoothOBD2Service {
       }));
   }
 
+  async getAvailableDevices(): Promise<BluetoothDevice[]> {
     await this.checkPermissions();
 
     if (Platform.OS === 'web' || this.testMode) {
@@ -188,8 +189,8 @@ class BluetoothOBD2Service {
       throw new Error('Failed to scan for DTC codes');
     } finally {
       this.isScanning = false;
-      return dtcCodes;
-
+    }
+  }
 
   private parseDTCResponse(response: string): DTCCode[] {
     // Parse real OBD2 DTC response
