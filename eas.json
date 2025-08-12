@@ -23,14 +23,17 @@
       },
       "ios": {
         "simulator": false
-      }
+      },
+      "autoIncrement": true
     },
     "production": {
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "app-bundle",
+        "credentialsSource": "auto"
       },
       "ios": {
-        "simulator": false
+        "simulator": false,
+        "credentialsSource": "auto"
       }
     },
     "apk-debug": {
