@@ -28,13 +28,12 @@
     },
     "production": {
       "android": {
-        "buildType": "app-bundle",
-        "credentialsSource": "auto"
+        "buildType": "app-bundle"
       },
       "ios": {
-        "simulator": false,
-        "credentialsSource": "auto"
-      }
+        "simulator": false
+      },
+      "autoIncrement": true
     },
     "apk-debug": {
       "extends": "development",
