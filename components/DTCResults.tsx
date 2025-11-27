@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,11 +11,11 @@ import {
   ActivityIndicator,
   SafeAreaView,
 } from 'react-native';
-import { Search, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle, Circle as XCircle, CircleAlert as AlertCircle, Brain, X } from 'lucide-react-native';
+import { Search, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle, Circle as XCircle, CircleAlert as AlertCircle, Brain, X, Lightbulb, Wrench } from 'lucide-react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { DTCCode, Vehicle } from '@/types/obd2';
 import { getSeverityColor } from '@/constants/dtcCodes';
-import { aiService, AIDiagnosticResponse } from '@/services/aiService';
+import { aiService, AIDiagnosticResponse, LikelyCausesResponse, ServiceProcedureResponse } from '@/services/aiService';
 
 interface Props {
   codes: DTCCode[];
@@ -36,6 +36,10 @@ export default function DTCResults({ codes, vehicle, onClearCodes, aiMode }: Pro
   const [selectedCode, setSelectedCode] = useState<DTCCode | null>(null);
   const [aiResponse, setAiResponse] = useState<AIDiagnosticResponse | null>(null);
   const [loadingAI, setLoadingAI] = useState(false);
+  const [likelyCauses, setLikelyCauses] = useState<string[] | null>(null);
+  const [serviceProcedureVisible, setServiceProcedureVisible] = useState(false);
+  const [serviceProcedure, setServiceProcedure] = useState<ServiceProcedureResponse | null>(null);
+  const [loadingProcedure, setLoadingProcedure] = useState(false);
 
   const buildSearchQuery = (code: DTCCode): string => {
     if (!vehicle) return '';
@@ -69,6 +73,20 @@ export default function DTCResults({ codes, vehicle, onClearCodes, aiMode }: Pro
     return null;
   };
 
+  const fetchLikelyCauses = async (code: DTCCode) => {
+    try {
+      const response = await aiService.getLikelyCauses(code.code);
+      if (response.success && response.causes && response.causes.length > 0) {
+        setLikelyCauses(response.causes);
+      } else {
+        setLikelyCauses(null);
+      }
+    } catch (error) {
+      console.error('Error fetching likely causes:', error);
+      setLikelyCauses(null);
+    }
+  };
+
   const getAIDiagnostic = async (code: DTCCode) => {
     const validationError = validateAIPrerequisites(code);
     if (validationError) {
@@ -80,10 +98,19 @@ export default function DTCResults({ codes, vehicle, onClearCodes, aiMode }: Pro
     setAiModalVisible(true);
     setLoadingAI(true);
     setAiResponse(null);
+    setLikelyCauses(null);
 
     try {
-      const response = await aiService.getDiagnosticAnalysis(code, vehicle!);
-      setAiResponse(response);
+      const [diagnosticResponse, causesResponse] = await Promise.all([
+        aiService.getDiagnosticAnalysis(code, vehicle!),
+        aiService.getLikelyCauses(code.code)
+      ]);
+
+      setAiResponse(diagnosticResponse);
+
+      if (causesResponse.success && causesResponse.causes && causesResponse.causes.length > 0) {
+        setLikelyCauses(causesResponse.causes);
+      }
     } catch (error) {
       setAiResponse({
         success: false,
@@ -94,10 +121,41 @@ export default function DTCResults({ codes, vehicle, onClearCodes, aiMode }: Pro
     }
   };
 
+  const getServiceProcedure = async (code: DTCCode) => {
+    if (!vehicle) {
+      Alert.alert('Error', 'Vehicle information is required');
+      return;
+    }
+
+    setSelectedCode(code);
+    setServiceProcedureVisible(true);
+    setLoadingProcedure(true);
+    setServiceProcedure(null);
+
+    try {
+      const response = await aiService.getServiceProcedure(code.code, vehicle);
+      setServiceProcedure(response);
+    } catch (error) {
+      setServiceProcedure({
+        success: false,
+        error: 'Failed to generate service procedure. Please try again.'
+      });
+    } finally {
+      setLoadingProcedure(false);
+    }
+  };
+
   const closeAIModal = () => {
     setAiModalVisible(false);
     setSelectedCode(null);
     setAiResponse(null);
+    setLikelyCauses(null);
+  };
+
+  const closeServiceProcedureModal = () => {
+    setServiceProcedureVisible(false);
+    setSelectedCode(null);
+    setServiceProcedure(null);
   };
 
   const getSeverityIcon = (severity: string) => {
@@ -108,29 +166,50 @@ export default function DTCResults({ codes, vehicle, onClearCodes, aiMode }: Pro
   };
 
   const renderDTCCode = ({ item }: { item: DTCCode }) => (
-    <TouchableOpacity
-      style={styles.codeItem}
-      onPress={() => searchDTCCode(item)}
-    >
-      <View style={styles.codeHeader}>
-        <View style={styles.codeInfo}>
-          <Text style={styles.codeText}>{item.code}</Text>
-          <View style={styles.severityContainer}>
-            {getSeverityIcon(item.severity)}
-            <Text style={[styles.severityText, { color: getSeverityColor(item.severity) }]}>
-              {item.severity.toUpperCase()}
-            </Text>
+    <View style={styles.codeItem}>
+      <TouchableOpacity
+        style={styles.codeItemContent}
+        onPress={() => searchDTCCode(item)}
+      >
+        <View style={styles.codeHeader}>
+          <View style={styles.codeInfo}>
+            <Text style={styles.codeText}>{item.code}</Text>
+            <View style={styles.severityContainer}>
+              {getSeverityIcon(item.severity)}
+              <Text style={[styles.severityText, { color: getSeverityColor(item.severity) }]}>
+                {item.severity.toUpperCase()}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.deviceActions}>
+            {aiMode ? (
+              <Brain size={16} color="#8b5cf6" strokeWidth={2} />
+            ) : (
+              <Search size={16} color="#6b7280" strokeWidth={2} />
+            )}
           </View>
         </View>
-        <View style={styles.deviceActions}>
-          {aiMode ? (
-            <Brain size={16} color="#8b5cf6" strokeWidth={2} />
-          ) : (
-            <Search size={16} color="#6b7280" strokeWidth={2} />
-          )}
+      </TouchableOpacity>
+
+      {aiMode && (
+        <View style={styles.actionButtons}>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.causesButton]}
+            onPress={() => getAIDiagnostic(item)}
+          >
+            <Lightbulb size={14} color="#8b5cf6" strokeWidth={2} />
+            <Text style={styles.actionButtonText}>Analyze</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.procedureButton]}
+            onPress={() => getServiceProcedure(item)}
+          >
+            <Wrench size={14} color="#059669" strokeWidth={2} />
+            <Text style={styles.actionButtonText}>Procedure</Text>
+          </TouchableOpacity>
         </View>
-      </View>
-    </TouchableOpacity>
+      )}
+    </View>
   );
 
   if (codes.length === 0) {
@@ -197,11 +276,74 @@ export default function DTCResults({ codes, vehicle, onClearCodes, aiMode }: Pro
               </View>
             ) : aiResponse ? (
               <View style={styles.responseContainer}>
+                {likelyCauses && likelyCauses.length > 0 && (
+                  <View style={styles.likelyCausesContainer}>
+                    <Text style={styles.likelyCausesTitle}>Most Likely Causes</Text>
+                    {likelyCauses.map((cause, index) => (
+                      <View key={index} style={styles.causeItem}>
+                        <Text style={styles.causeText}>
+                          {index + 1}. {cause}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
                 {aiResponse.success ? (
                   <Text style={styles.aiResponseText}>{aiResponse.content}</Text>
                 ) : (
                   <View style={styles.errorContainer}>
                     <Text style={styles.errorText}>{aiResponse.error}</Text>
+                  </View>
+                )}
+              </View>
+            ) : null}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      <Modal
+        visible={serviceProcedureVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={closeServiceProcedureModal}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalTitleContainer}>
+              <Wrench size={24} color="#059669" strokeWidth={2} />
+              <Text style={styles.modalTitle}>Service Procedure</Text>
+            </View>
+            <TouchableOpacity onPress={closeServiceProcedureModal} style={styles.closeButton}>
+              <X size={24} color="#6b7280" strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+
+          {selectedCode && (
+            <View style={styles.codeHeader}>
+              <Text style={styles.modalCodeText}>{selectedCode.code}</Text>
+              <Text style={styles.modalCodeDescription}>{selectedCode.description}</Text>
+              {vehicle && (
+                <Text style={styles.modalVehicleText}>
+                  {vehicle.year} {vehicle.brand} {vehicle.model}
+                </Text>
+              )}
+            </View>
+          )}
+
+          <ScrollView style={styles.modalContent}>
+            {loadingProcedure ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#059669" />
+                <Text style={styles.loadingText}>Generating service procedure...</Text>
+              </View>
+            ) : serviceProcedure ? (
+              <View style={styles.responseContainer}>
+                {serviceProcedure.success ? (
+                  <Text style={styles.procedureText}>{serviceProcedure.procedure}</Text>
+                ) : (
+                  <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>{serviceProcedure.error}</Text>
                   </View>
                 )}
               </View>
@@ -248,9 +390,38 @@ const styles = StyleSheet.create({
     maxHeight: 400,
   },
   codeItem: {
-    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
+  },
+  codeItemContent: {
+    padding: 16,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    gap: 8,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    gap: 6,
+  },
+  causesButton: {
+    backgroundColor: '#f3e8ff',
+  },
+  procedureButton: {
+    backgroundColor: '#d1fae5',
+  },
+  actionButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1f2937',
   },
   codeHeader: {
     flexDirection: 'row',
@@ -352,6 +523,36 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
     color: '#1f2937',
+  },
+  procedureText: {
+    fontSize: 15,
+    lineHeight: 24,
+    color: '#1f2937',
+  },
+  likelyCausesContainer: {
+    marginBottom: 24,
+  },
+  likelyCausesTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  causeItem: {
+    backgroundColor: '#f3e8ff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#8b5cf6',
+  },
+  causeText: {
+    fontSize: 14,
+    color: '#1f2937',
+    lineHeight: 20,
   },
   errorContainer: {
     backgroundColor: '#fef2f2',
